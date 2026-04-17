@@ -1,0 +1,12 @@
+{
+  "tests": [
+    {
+      "name": "GET all assets",
+      "method": "GET",
+      "path": "/",
+      "expectedStatus": 200,
+      "expectedBody": {"assets": [], "positions": {}},
+      "bodyMatcher": "partial"
+    }
+  ]
+}

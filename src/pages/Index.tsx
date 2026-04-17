@@ -1,6 +1,6 @@
 import { useState, lazy, Suspense, useRef } from "react";
 import Icon from "@/components/ui/icon";
-import QRUploader from "@/components/QRUploader";
+import { useCampusData } from "@/hooks/useCampusData";
 import { BUILDINGS, INSTITUTES, INFRA_ITEMS, S_COMMUNITIES, type Building } from "@/data/altgu";
 
 const CampusMap = lazy(() => import("@/components/CampusMap"));
@@ -12,12 +12,12 @@ const NAV_ITEMS = [
   { id: "about", label: "Об университете", icon: "GraduationCap" },
 ];
 
-const HERO_IMAGE = "https://cdn.poehali.dev/projects/a49f9ee1-8131-4343-9ff6-baf164468591/files/78a79ccc-bce9-4a83-8dbf-c7b6268521bb.jpg";
-
-/* ── Photo block helper ── */
-function PhotoBlock({ value, onChange, label, placeholder }: { value?: string; onChange: (d: string) => void; label: string; placeholder?: boolean }) {
+/* ── Photo block ── */
+function PhotoBlock({
+  value, onChange, label, placeholder,
+}: { value?: string; onChange: (d: string) => void; label: string; placeholder?: boolean }) {
   const ref = useRef<HTMLInputElement>(null);
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const readFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -30,12 +30,12 @@ function PhotoBlock({ value, onChange, label, placeholder }: { value?: string; o
       <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
         <span className="text-white text-xs flex items-center gap-1"><Icon name="RefreshCw" size={12} />Заменить</span>
       </div>
-      <input ref={ref} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+      <input ref={ref} type="file" accept="image/*" className="hidden" onChange={readFile} />
     </div>
   );
   return (
     <div>
-      <input ref={ref} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+      <input ref={ref} type="file" accept="image/*" className="hidden" onChange={readFile} />
       <button
         onClick={() => { if (!placeholder) ref.current?.click(); }}
         className={`w-full h-24 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-1.5 transition-colors ${placeholder ? "border-white/8 text-white/20 cursor-default" : "border-white/20 hover:border-white/35 text-white/40 cursor-pointer"}`}
@@ -47,10 +47,10 @@ function PhotoBlock({ value, onChange, label, placeholder }: { value?: string; o
   );
 }
 
-/* ── Small QR helper ── */
+/* ── Small QR cell ── */
 function SmallQR({ label, value, onChange }: { label: string; value?: string; onChange: (d: string) => void }) {
   const ref = useRef<HTMLInputElement>(null);
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const readFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
@@ -59,7 +59,7 @@ function SmallQR({ label, value, onChange }: { label: string; value?: string; on
   };
   return (
     <div className="flex flex-col items-center gap-1.5">
-      <input ref={ref} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+      <input ref={ref} type="file" accept="image/*" className="hidden" onChange={readFile} />
       {value ? (
         <button onClick={() => ref.current?.click()} className="group relative w-16 h-16">
           <img src={value} alt={label} className="w-full h-full object-contain rounded-xl border border-white/20 bg-white p-1" />
@@ -78,38 +78,58 @@ function SmallQR({ label, value, onChange }: { label: string; value?: string; on
   );
 }
 
+/* ── QR Uploader (large) ── */
+function QRUpload({ label, value, onChange }: { label: string; value?: string; onChange: (d: string) => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const readFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => { if (ev.target?.result) onChange(ev.target.result as string); };
+    reader.readAsDataURL(file);
+  };
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4 flex items-center gap-4">
+      <input ref={ref} type="file" accept="image/*" className="hidden" onChange={readFile} />
+      {value ? (
+        <div className="relative group cursor-pointer flex-shrink-0" onClick={() => ref.current?.click()}>
+          <img src={value} alt={label} className="w-16 h-16 object-contain rounded-xl bg-white p-1" />
+          <div className="absolute inset-0 bg-black/50 rounded-xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+            <Icon name="RefreshCw" size={14} className="text-white" />
+          </div>
+        </div>
+      ) : (
+        <button onClick={() => ref.current?.click()} className="w-16 h-16 rounded-xl border-2 border-dashed border-white/20 flex flex-col items-center justify-center gap-1 hover:border-agu-cyan/50 transition-colors flex-shrink-0">
+          <Icon name="Upload" size={16} className="text-white/30" />
+          <span className="text-white/30 text-[9px]">PNG</span>
+        </button>
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="text-white font-semibold text-sm">{label}</div>
+        <div className="text-white/40 text-xs mt-0.5">{value ? "Загружен · нажмите для замены" : "Нажмите для загрузки QR-кода (PNG)"}</div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Building panel ── */
 interface PanelProps {
   building: Building;
   onClose: () => void;
-  buildingQRs: Record<string, string>;
-  onQRUpdate: (id: string, qr: string) => void;
-  communityQRs: Record<string, string>;
-  onCommunityQRUpdate: (k: string, v: string) => void;
-  buildingPhotos: Record<string, string>;
-  onPhotoUpdate: (id: string, p: string) => void;
-  floorMapPhoto?: string;
-  onFloorMapUpdate: (p: string) => void;
-  kalashPhoto?: string;
-  onKalashUpdate: (p: string) => void;
+  assets: Record<string, string>;
+  saveAsset: (key: string, type: string, dataUrl: string) => void;
 }
 
-function BuildingPanelInline({
-  building, onClose,
-  buildingQRs, onQRUpdate,
-  communityQRs, onCommunityQRUpdate,
-  buildingPhotos, onPhotoUpdate,
-  floorMapPhoto, onFloorMapUpdate,
-  kalashPhoto, onKalashUpdate,
-}: PanelProps) {
+function BuildingPanelInline({ building, onClose, assets, saveAsset }: PanelProps) {
   const isS = building.id === "S";
-  const photo = buildingPhotos[building.id];
+  const photo = assets[`photo_${building.id}`];
+  const qr = assets[`qr_${building.id}`];
+  const kalash = assets["photo_kalash"];
+  const floorMap = assets["photo_floormap_S"];
 
   return (
-    <div
-      className="rounded-3xl border bg-agu-card p-5 animate-fade-in overflow-y-auto"
-      style={{ borderColor: building.color + "44", maxHeight: "78vh" }}
-    >
+    <div className="rounded-3xl border bg-agu-card p-5 animate-fade-in overflow-y-auto" style={{ borderColor: building.color + "44", maxHeight: "78vh" }}>
+      {/* Header */}
       <div className="flex items-start gap-3 mb-4">
         <div className="w-12 h-12 rounded-xl flex items-center justify-center font-montserrat font-black text-white text-lg flex-shrink-0" style={{ background: `linear-gradient(135deg, ${building.color}, ${building.color}88)` }}>
           {building.code}
@@ -121,8 +141,10 @@ function BuildingPanelInline({
         <button onClick={onClose} className="p-1.5 rounded-lg text-white/30 hover:text-white transition-colors"><Icon name="X" size={16} /></button>
       </div>
 
-      <PhotoBlock value={photo} onChange={(d) => onPhotoUpdate(building.id, d)} label="Добавить фото фасада" />
+      {/* Фото фасада */}
+      <PhotoBlock value={photo} onChange={(d) => saveAsset(`photo_${building.id}`, "photo", d)} label="Добавить фото фасада" />
 
+      {/* Подразделения */}
       <div className="my-4">
         <p className="text-white/40 text-[10px] font-semibold uppercase tracking-wider mb-2">Подразделения</p>
         <div className="flex flex-wrap gap-1.5">
@@ -134,38 +156,74 @@ function BuildingPanelInline({
 
       <p className="text-white/50 text-sm leading-relaxed mb-4">{building.desc}</p>
 
+      {/* QR корпуса (не для СОК, не для С) */}
       {building.hasQR && !isS && (
         <div className="mb-4">
           <p className="text-white/40 text-[10px] font-semibold uppercase tracking-wider mb-2">QR-код корпуса</p>
-          <QRUploader label={`QR-код · ${building.name}`} value={buildingQRs[building.id]} onChange={(d) => onQRUpdate(building.id, d)} />
+          <QRUpload label={`QR-код · ${building.name}`} value={qr} onChange={(d) => saveAsset(`qr_${building.id}`, "qr", d)} />
         </div>
       )}
 
+      {/* Корпус С — расширенный блок */}
       {isS && (
         <div className="space-y-5">
+          {/* QR сообществ */}
           <div>
             <p className="text-white/40 text-[10px] font-semibold uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <Icon name="QrCode" size={11} />QR-коды сообществ
             </p>
             <div className="grid grid-cols-3 gap-3">
               {S_COMMUNITIES.map((c) => (
-                <SmallQR key={c.name} label={c.name} value={communityQRs[c.name]} onChange={(d) => onCommunityQRUpdate(c.name, d)} />
+                <SmallQR key={c.name} label={c.name} value={assets[`qr_comm_${c.name}`]} onChange={(d) => saveAsset(`qr_comm_${c.name}`, "qr_community", d)} />
               ))}
             </div>
           </div>
 
+          {/* Схема этажей */}
+          <div>
+            <p className="text-white/40 text-[10px] font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <Icon name="Map" size={11} />Схема этажей корпуса С
+            </p>
+            {floorMap ? (
+              <div className="relative rounded-2xl overflow-hidden group cursor-pointer" onClick={() => {
+                const ref = document.getElementById("floor-input-S") as HTMLInputElement;
+                ref?.click();
+              }}>
+                <img src={floorMap} alt="Схема этажей" className="w-full object-contain max-h-72 rounded-2xl" />
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-2xl">
+                  <span className="text-white text-xs flex items-center gap-1"><Icon name="RefreshCw" size={12} />Заменить</span>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => { const el = document.getElementById("floor-input-S") as HTMLInputElement; el?.click(); }}
+                className="w-full h-32 rounded-2xl border-2 border-dashed border-white/20 flex flex-col items-center justify-center gap-2 hover:border-white/35 text-white/40 transition-colors"
+              >
+                <Icon name="ImagePlus" size={20} />
+                <span className="text-xs">Загрузить схему этажей</span>
+              </button>
+            )}
+            <input
+              id="floor-input-S"
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => { if (ev.target?.result) saveAsset("photo_floormap_S", "floor_map", ev.target.result as string); };
+                reader.readAsDataURL(file);
+              }}
+            />
+          </div>
+
+          {/* Пристройка Калашникова */}
           <div>
             <p className="text-white/40 text-[10px] font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5">
               <Icon name="Building" size={11} />Пристройка имени Калашникова
             </p>
-            <PhotoBlock value={kalashPhoto} onChange={onKalashUpdate} label="Фото добавите позже" placeholder />
-          </div>
-
-          <div>
-            <p className="text-white/40 text-[10px] font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5">
-              <Icon name="Map" size={11} />Карта этажей корпуса С
-            </p>
-            <PhotoBlock value={floorMapPhoto} onChange={onFloorMapUpdate} label="Карту этажей добавите позже" placeholder />
+            <PhotoBlock value={kalash} onChange={(d) => saveAsset("photo_kalash", "photo", d)} label="Фото добавите позже" placeholder />
           </div>
         </div>
       )}
@@ -179,14 +237,10 @@ export default function Index() {
   const [activeBuilding, setActiveBuilding] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  const [positions, setPositions] = useState<Record<string, { lat: number; lng: number }>>({});
-  const [buildingQRs, setBuildingQRs] = useState<Record<string, string>>({});
-  const [communityQRs, setCommunityQRs] = useState<Record<string, string>>({});
-  const [buildingPhotos, setBuildingPhotos] = useState<Record<string, string>>({});
-  const [floorMapPhoto, setFloorMapPhoto] = useState<string | undefined>();
-  const [kalashPhoto, setKalashPhoto] = useState<string | undefined>();
-  const [collegeQR, setCollegeQR] = useState<string | undefined>();
   const [showCollegeQR, setShowCollegeQR] = useState(false);
+  const [expandedInstitute, setExpandedInstitute] = useState<number | null>(null);
+
+  const { assets, positions, loading, saveAsset, savePosition } = useCampusData();
 
   const scrollTo = (id: string) => {
     setActiveSection(id);
@@ -198,13 +252,13 @@ export default function Index() {
   const buildingsResolved: Building[] = BUILDINGS.map((b) => ({
     ...b,
     ...(positions[b.id] ?? {}),
-    ...(buildingQRs[b.id] ? { qrCode: buildingQRs[b.id] } : {}),
   }));
 
   const activeBuildingData = buildingsResolved.find((b) => b.id === activeBuilding);
 
   return (
     <div className="min-h-screen bg-agu-dark font-golos text-white overflow-x-hidden">
+      {/* BG mesh */}
       <div className="fixed inset-0 pointer-events-none z-0">
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-600/15 rounded-full blur-3xl animate-float" />
         <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-violet-600/15 rounded-full blur-3xl animate-float" style={{ animationDelay: "1.5s" }} />
@@ -247,57 +301,50 @@ export default function Index() {
         )}
       </nav>
 
-      {/* ═══ HERO ═══ */}
+      {/* ═══ HERO (без картинки) ═══ */}
       <section id="home" className="relative min-h-screen flex flex-col justify-center pt-16 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-20 grid md:grid-cols-2 gap-12 items-center">
-          <div className="animate-fade-in">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-agu-cyan/30 bg-agu-cyan/10 text-agu-cyan text-sm font-medium mb-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-20 flex flex-col items-center text-center">
+          <div className="animate-fade-in max-w-3xl">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-agu-cyan/30 bg-agu-cyan/10 text-agu-cyan text-sm font-medium mb-8">
               <Icon name="MapPin" size={14} />Барнаул, Алтайский край
             </div>
-            <h1 className="font-montserrat font-black text-5xl sm:text-6xl lg:text-7xl leading-none mb-6">
+            <h1 className="font-montserrat font-black text-6xl sm:text-7xl lg:text-8xl leading-none mb-6">
               <span className="block text-white">Кампус</span>
               <span className="block bg-gradient-to-r from-agu-cyan via-violet-400 to-agu-orange bg-clip-text text-transparent animate-gradient-shift bg-[length:200%_200%]">АлтГУ</span>
             </h1>
-            <p className="text-white/60 text-lg sm:text-xl leading-relaxed mb-8 max-w-md">
+            <p className="text-white/60 text-lg sm:text-xl leading-relaxed mb-10 max-w-xl mx-auto">
               Интерактивная карта кампуса Алтайского государственного университета — корпуса, институты, инфраструктура и QR-навигация
             </p>
-            <div className="flex flex-wrap gap-4">
-              <button onClick={() => scrollTo("map")} className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-agu-cyan to-agu-violet text-white font-semibold hover:scale-105 transition-transform duration-200 animate-pulse-glow">
-                <Icon name="Map" size={18} />Открыть карту
+            <div className="flex flex-wrap gap-4 justify-center">
+              <button onClick={() => scrollTo("map")} className="flex items-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-agu-cyan to-agu-violet text-white font-semibold text-lg hover:scale-105 transition-transform duration-200 animate-pulse-glow">
+                <Icon name="Map" size={20} />Открыть карту
               </button>
-              <button onClick={() => scrollTo("buildings")} className="flex items-center gap-2 px-6 py-3 rounded-2xl border border-white/20 text-white/80 hover:border-white/40 hover:text-white transition-all duration-200">
-                <Icon name="Building2" size={18} />Корпусы
+              <button onClick={() => scrollTo("buildings")} className="flex items-center gap-2 px-8 py-4 rounded-2xl border border-white/20 text-white/80 hover:border-white/40 hover:text-white transition-all duration-200 text-lg">
+                <Icon name="Building2" size={20} />Корпусы
               </button>
             </div>
-            <div className="grid grid-cols-3 gap-6 mt-12 pt-8 border-t border-white/10">
+            <div className="grid grid-cols-3 gap-8 mt-16 pt-10 border-t border-white/10 max-w-md mx-auto">
               {[{ value: "9", label: "Институтов" }, { value: "20k+", label: "Студентов" }, { value: "1973", label: "Год основания" }].map((s) => (
                 <div key={s.label}>
-                  <div className="font-montserrat font-black text-3xl bg-gradient-to-r from-agu-cyan to-agu-violet bg-clip-text text-transparent">{s.value}</div>
+                  <div className="font-montserrat font-black text-4xl bg-gradient-to-r from-agu-cyan to-agu-violet bg-clip-text text-transparent">{s.value}</div>
                   <div className="text-white/40 text-sm mt-1">{s.label}</div>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="relative animate-fade-in" style={{ animationDelay: "0.3s" }}>
-            <div className="relative rounded-3xl overflow-hidden aspect-[4/3]">
-              <img src={HERO_IMAGE} alt="Кампус АлтГУ" className="w-full h-full object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-t from-agu-dark/60 via-transparent to-transparent" />
-              <div className="absolute bottom-4 left-4 right-4 flex gap-3 flex-wrap">
-                {["Главный корпус М", "2024/25", "Барнаул"].map((tag) => (
-                  <span key={tag} className="px-3 py-1 rounded-full bg-white/10 backdrop-blur-sm text-white/80 text-xs border border-white/20">{tag}</span>
-                ))}
-              </div>
-            </div>
-            <div className="absolute -bottom-6 -left-6 bg-agu-card border border-white/10 rounded-2xl p-4 flex items-center gap-3 backdrop-blur-sm shadow-2xl">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-agu-cyan to-agu-violet flex items-center justify-center">
-                <Icon name="Navigation" size={18} className="text-white" />
-              </div>
-              <div>
-                <div className="text-white font-semibold text-sm">QR-навигация</div>
-                <div className="text-white/40 text-xs">У каждого корпуса</div>
-              </div>
-            </div>
+          {/* Floating cards под текстом */}
+          <div className="flex flex-wrap justify-center gap-4 mt-12 animate-fade-in" style={{ animationDelay: "0.4s" }}>
+            {BUILDINGS.map((b) => (
+              <button
+                key={b.id}
+                onClick={() => { scrollTo("map"); setTimeout(() => setActiveBuilding(b.id), 400); }}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10 transition-all"
+              >
+                <div className="w-6 h-6 rounded-lg flex items-center justify-center font-montserrat font-bold text-white text-[10px]" style={{ background: b.color }}>{b.code}</div>
+                <span className="text-white/60 text-sm">{b.name}</span>
+              </button>
+            ))}
           </div>
         </div>
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-white/30 animate-float">
@@ -331,22 +378,28 @@ export default function Index() {
 
           <div className="grid lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2" style={{ height: 520 }}>
-              <Suspense fallback={
+              {loading ? (
                 <div className="w-full h-full rounded-3xl border border-white/10 bg-agu-card flex items-center justify-center">
                   <div className="text-white/30 flex flex-col items-center gap-3">
                     <Icon name="Loader2" size={32} className="animate-spin" />
-                    <span className="text-sm">Загрузка карты...</span>
+                    <span className="text-sm">Загрузка данных...</span>
                   </div>
                 </div>
-              }>
-                <CampusMap
-                  buildings={buildingsResolved}
-                  activeBuilding={activeBuilding}
-                  onBuildingClick={(id) => setActiveBuilding(activeBuilding === id ? null : id)}
-                  editMode={editMode}
-                  onPositionUpdate={(id, lat, lng) => setPositions((p) => ({ ...p, [id]: { lat, lng } }))}
-                />
-              </Suspense>
+              ) : (
+                <Suspense fallback={
+                  <div className="w-full h-full rounded-3xl border border-white/10 bg-agu-card flex items-center justify-center">
+                    <Icon name="Loader2" size={32} className="text-white/30 animate-spin" />
+                  </div>
+                }>
+                  <CampusMap
+                    buildings={buildingsResolved}
+                    activeBuilding={activeBuilding}
+                    onBuildingClick={(id) => setActiveBuilding(activeBuilding === id ? null : id)}
+                    editMode={editMode}
+                    onPositionUpdate={savePosition}
+                  />
+                </Suspense>
+              )}
             </div>
 
             <div className="flex flex-col gap-3">
@@ -354,16 +407,8 @@ export default function Index() {
                 <BuildingPanelInline
                   building={activeBuildingData}
                   onClose={() => setActiveBuilding(null)}
-                  buildingQRs={buildingQRs}
-                  onQRUpdate={(id, qr) => setBuildingQRs((p) => ({ ...p, [id]: qr }))}
-                  communityQRs={communityQRs}
-                  onCommunityQRUpdate={(k, v) => setCommunityQRs((p) => ({ ...p, [k]: v }))}
-                  buildingPhotos={buildingPhotos}
-                  onPhotoUpdate={(id, p) => setBuildingPhotos((prev) => ({ ...prev, [id]: p }))}
-                  floorMapPhoto={floorMapPhoto}
-                  onFloorMapUpdate={setFloorMapPhoto}
-                  kalashPhoto={kalashPhoto}
-                  onKalashUpdate={setKalashPhoto}
+                  assets={assets}
+                  saveAsset={saveAsset}
                 />
               ) : (
                 <div className="rounded-3xl border border-white/10 bg-agu-card p-6 flex flex-col items-center justify-center text-center gap-4" style={{ minHeight: 180 }}>
@@ -394,7 +439,7 @@ export default function Index() {
         </div>
       </section>
 
-      {/* ═══ BUILDINGS / INSTITUTES ═══ */}
+      {/* ═══ INSTITUTES ═══ */}
       <section id="buildings" className="relative z-10 py-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="text-center mb-12">
@@ -407,24 +452,47 @@ export default function Index() {
           </div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-6">
-            {INSTITUTES.map((inst) => (
-              <div key={inst.shortName} className="group relative rounded-3xl border border-white/10 bg-agu-card p-6 hover:border-white/20 transition-all duration-300 hover:-translate-y-1 overflow-hidden">
-                <div className={`absolute inset-0 opacity-0 group-hover:opacity-10 bg-gradient-to-br ${inst.color} transition-opacity duration-300`} />
-                <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${inst.color} flex items-center justify-center mb-4`}>
-                  <Icon name={inst.icon} size={22} className="text-white" />
+            {INSTITUTES.map((inst, i) => {
+              const isOpen = expandedInstitute === i;
+              const qrKey = `qr_institute_${inst.shortName}`;
+              const qrVal = assets[qrKey];
+              return (
+                <div key={inst.shortName} className={`group relative rounded-3xl border bg-agu-card overflow-hidden transition-all duration-300 ${isOpen ? "border-white/20" : "border-white/10 hover:border-white/20 hover:-translate-y-1"}`}>
+                  <div className={`absolute inset-0 opacity-0 group-hover:opacity-10 bg-gradient-to-br ${inst.color} transition-opacity duration-300`} />
+                  <div className="relative p-6">
+                    <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${inst.color} flex items-center justify-center mb-4`}>
+                      <Icon name={inst.icon} size={22} className="text-white" />
+                    </div>
+                    <p className="font-montserrat font-black text-agu-cyan text-xs mb-1 uppercase tracking-wider">{inst.shortName}</p>
+                    <h3 className="font-montserrat font-bold text-white text-sm leading-tight mb-3">{inst.name}</h3>
+                    <div className="flex items-center justify-between">
+                      <span className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/10 text-white/40 text-xs">Корпус {inst.building}</span>
+                      <button
+                        onClick={() => setExpandedInstitute(isOpen ? null : i)}
+                        className={`flex items-center gap-1.5 text-xs transition-colors ${isOpen ? "text-agu-cyan" : "text-white/30 hover:text-white/60"}`}
+                      >
+                        <Icon name="QrCode" size={13} />
+                        QR
+                        <Icon name={isOpen ? "ChevronUp" : "ChevronDown"} size={13} />
+                      </button>
+                    </div>
+                    {isOpen && (
+                      <div className="mt-4 pt-4 border-t border-white/10 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+                        <QRUpload
+                          label={`QR-код · ${inst.shortName}`}
+                          value={qrVal}
+                          onChange={(d) => saveAsset(qrKey, "qr_institute", d)}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <p className="font-montserrat font-black text-agu-cyan text-xs mb-1 uppercase tracking-wider">{inst.shortName}</p>
-                <h3 className="font-montserrat font-bold text-white text-sm leading-tight mb-2">{inst.name}</h3>
-                <span className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/10 text-white/40 text-xs">Корпус {inst.building}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Колледж */}
-          <div
-            className="rounded-3xl border border-emerald-500/30 bg-agu-card p-6 mb-20 cursor-pointer hover:border-emerald-500/50 transition-all"
-            onClick={() => setShowCollegeQR(!showCollegeQR)}
-          >
+          <div className="rounded-3xl border border-emerald-500/30 bg-agu-card p-6 mb-20 cursor-pointer hover:border-emerald-500/50 transition-all" onClick={() => setShowCollegeQR(!showCollegeQR)}>
             <div className="flex items-start gap-4">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-500 flex items-center justify-center flex-shrink-0">
                 <Icon name="GraduationCap" size={22} className="text-white" />
@@ -439,7 +507,7 @@ export default function Index() {
             {showCollegeQR && (
               <div className="mt-5 pt-5 border-t border-white/10 animate-fade-in" onClick={(e) => e.stopPropagation()}>
                 <p className="text-white/40 text-[10px] font-semibold uppercase tracking-wider mb-3">QR-код Колледжа</p>
-                <QRUploader label="QR-код · Колледж АлтГУ" value={collegeQR} onChange={setCollegeQR} />
+                <QRUpload label="QR-код · Колледж АлтГУ" value={assets["qr_college"]} onChange={(d) => saveAsset("qr_college", "qr", d)} />
               </div>
             )}
           </div>
@@ -490,7 +558,7 @@ export default function Index() {
                     Алтайский государственный университет — ведущий классический университет Сибири, основанный в 1973 году. АлтГУ — крупнейший научный и образовательный центр Алтайского края с развитой инфраструктурой и богатыми академическими традициями.
                   </p>
                   <p className="text-white/50 text-base leading-relaxed mb-8">
-                    В составе университета 9 институтов, колледж, спортивно-оздоровительный комплекс и студенческая поликлиника (ул. Юрина, 166а). Кампус включает 6 корпусов, расположенных по всему Барнаулу.
+                    В составе университета 9 институтов, колледж, спортивно-оздоровительный комплекс и студенческая поликлиника (ул. Юрина, 166а). Кампус включает 6 корпусов по всему Барнаулу.
                   </p>
                   <div className="flex flex-wrap gap-3">
                     {["Аккредитован", "Государственный", "Барнаул", "Сибирь"].map((tag) => (
@@ -498,7 +566,6 @@ export default function Index() {
                     ))}
                   </div>
                 </div>
-
                 <div className="grid grid-cols-2 gap-4">
                   {[
                     { value: "1973", label: "Год основания", icon: "Calendar", color: "#00c6ff" },
@@ -521,8 +588,7 @@ export default function Index() {
 
               <div className="mt-12 pt-8 border-t border-white/10">
                 <h3 className="font-montserrat font-bold text-white text-xl mb-6 flex items-center gap-2">
-                  <Icon name="Building2" size={20} className="text-agu-cyan" />
-                  Корпуса АлтГУ
+                  <Icon name="Building2" size={20} className="text-agu-cyan" />Корпуса АлтГУ
                 </h3>
                 <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {BUILDINGS.map((b) => (
